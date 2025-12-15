@@ -81,7 +81,7 @@ In the **File List Panel**, ensure all required files in the **Keys** folder are
 
 - Click **Validate Answers** to review responses flagged during the redundancy check.
 - Answers highlighted in **yellow** should be verified.
-- If incorrect, edit the student’s answers on the left panel.
+- If incorrect, edit the student’s answers on the right panel.
 - Use the **Validation Panel** (bottom-left) to:
   - Save validation changes
   - Navigate between exams
@@ -90,7 +90,7 @@ In the **File List Panel**, ensure all required files in the **Keys** folder are
 
 ### 6. Review Individual Exams
 
-- Individual student exams can be opened from the **ScoreReports** folder.
+- Individual student exams can be viewed from the **ScoreReports** folder.
 - Student responses may be manually edited in:
   - **`studentOutput.mat`** (located in the **Output** folder)
 
