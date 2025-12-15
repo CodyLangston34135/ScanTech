@@ -1,0 +1,57 @@
+function generateAnswerStatistics(studentData, classlist, answerKey)
+
+    % Load answer key data and remove blanks
+    checkNumbers = classlist(:,2);
+    checkNumbers(cellfun(@isempty, checkNumbers)) = [];
+    checkVersions = answerKey(1,2:end);
+    checkVersions(cellfun(@isempty, checkVersions)) = [];
+    perQuestion = answerKey(2:end,1);
+    perQuestion(cellfun(@isempty, perQuestion)) = [];
+    perQuestion = cell2mat(perQuestion);
+    perQuestion = str2num(perQuestion);
+    checkAnswers = answerKey(2:end,2:end);
+    checkAnswers(all(cellfun(@isempty, checkAnswers), 2), :) = [];
+    checkAnswers(:, all(cellfun(@isempty, checkAnswers), 1)) = [];
+    numQuestions = size(checkAnswers,1);
+
+    % Load student data
+    studentNumbers = studentData(1,:);
+    studentVersions = studentData(2,:);
+    studentAnswers = studentData(3:end,:);
+    numStudents = size(studentAnswers,2);
+
+    % Initialize output data
+    classlist(:,3) = {0};
+    indInvalidNum = 0;
+    invalidClasslist = cell(0,4);
+    for i = 1:numStudents
+        % Check Version
+        stuVer = find(strcmp(checkVersions, studentVersions{i}));
+        if isemtpy(stuVer)
+            indInvalidNum = indInvalidNum + 1;
+            invalidClasslist = [studentNumbers(i), studentVersions(i), {0}];
+            break;
+        end
+        verAns = checkAnswers(:,stuVer);
+
+        % Check Answers
+        stuAns = studentAnswers(:,i);
+        stuCorrect = strcmp(stuAns, verAns);
+        stuWrong = ~stuCorrect;
+        stuPrecent = sum(perQuestion(stuCorrect));
+
+        % Check student number
+        stuNum = find(strcmp(checkNumbers, studentNumbers{i}),1);
+        if isempty(stuNum)
+            indInvalidNum = indInvalidNum + 1;
+            invalidClasslist = [strcstudentNumbers(i), studentVersions(i), {stuPrecent}];
+            break;
+        end
+
+        % Store to classlist
+        classlist{i,3} = stuPercent;
+
+    end
+
+    test=1;
+end

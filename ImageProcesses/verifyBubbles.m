@@ -1,0 +1,354 @@
+%% verifyBubbles.m
+% This module reads from the scanned answer sheets, checks student numbers
+% against classlist, checks student version against the version with the
+% highest grade, and checks student answers against eachother
+
+function [studentNumber, studentVersion, studentAnswer, boolVerify] = verifyBubbles(studentNumberSpatial, studentNumberNetwork, studentVersion,...
+                                                                                    studentAnswerSpatial, studentAnswerNetwork, classlist, answerKey)
+
+    % Format input tables to get correct data
+    [studentIDList, testVersionList, answerPointList, answerLetterList] = formatInputTables(classlist, answerKey);
+    
+    % Convert logical maps into values for each bubble
+    studentNumberSpatial = formatStudentNumber(studentNumberSpatial);
+    studentNumberNetwork = formatStudentNumber(studentNumberNetwork);
+    studentVersion = formatStudentVersion(studentVersion);
+    studentAnswerSpatial = formatStudentAnswer(studentAnswerSpatial);
+    studentAnswerNetwork = formatStudentAnswer(studentAnswerNetwork);
+    
+    %% Validate student numbers
+    % Find unique studentNumbers
+    studentNumber = [studentNumberSpatial, studentNumberNetwork];
+    studentNumber = unique(studentNumber);
+    
+    % Compare to valid list of numbers
+    [indValidNumber, ~] = find(studentIDList==studentNumber);
+    
+    switch size(indValidNumber,1)
+        case 0
+            % No valid numbers, requires manual input
+            studentNumber = 81*10^7;
+            boolVerify{1} = true;
+        case 1
+            % The scan is a valid number
+            studentNumber = studentIDList(indValidNumber);
+            boolVerify{1} = false;
+        otherwise
+            % More than 1 valid number, requires manual verification
+            studentNumber = studentIDList(indValidNumber(1));
+            boolVerify{1} = true;
+    end
+
+
+    %% Validate student answers and version
+    % This had to be stored in another function, the redundancy logic gets complex
+    [studentAnswer, studentVersion, boolVerify] = validateStudentAnswer(boolVerify,testVersionList,studentVersion,answerPointList,...
+                                                                        answerLetterList,studentAnswerSpatial,studentAnswerNetwork);
+
+    indNoAnswer = cellfun(@isempty,studentAnswer);
+    studentAnswer(indNoAnswer) = {0};
+
+end
+
+%% formatInputTables.m
+% This function parses through classlist.mat and answerkey.mat to get the
+% important data needed to validate scanned answers. 
+% This function is (very) poorly optimized but doesnt see much data and
+% will not crash if someone inputs random strings into the tables
+
+function [studentID, testVersion, answerPoint, answerLetter] = formatInputTables(classlist, answerKey)
+
+    % Format classlist
+    studentID = classlist(1:end-1,2);                                                 % Crop to studentIDs
+    studentID = cellfun(@char,studentID,'UniformOutput',false);                       % Convert everything to a character arrays
+    studentID = cellfun(@str2num,studentID,'UniformOutput',false);                    % Convert everything into a number 
+    studentID = cell2mat(studentID);                                                  % Convert to matrix
+    
+    % Format testVersions
+    testVersion = answerKey(1,2:end-1);                                               % Crop to testVersions
+    testVersion = cellfun(@char,testVersion,'UniformOutput',false);                   % Convert to character arrays
+    
+    % Format answerPoints
+    answerPoint = answerKey(2:end-1,1);                                               % Crop to points only 
+    answerPoint = cellfun(@char,answerPoint,'UniformOutput',false);                   % Convert to character array
+    answerPoint = cellfun(@(x)(split(x,', ',2)),answerPoint,'UniformOutput',false);   % Parse for ', ' to seperate points
+    answerPoint = cellfun(@(x)cellfun(@str2num,x,'UniformOutput',false),answerPoint,'UniformOutput',false); % Convert resulting cells within cells to numeric arrays
+    answerPoint = cellfun(@cell2mat,answerPoint,'UniformOutput',false);
+
+    % Format answerKey
+    answerLetter = answerKey(2:end-1,2:end-1);
+    answerLetter = cellfun(@char,answerLetter,'UniformOutput',false);                  % Convert to character array
+    answerLetter = cellfun(@(x)(split(x,', ',2)),answerLetter,'UniformOutput',false);  % Parse for ', ' to seperate points
+    [~, answerLetter] = cellfun(@(x)(ismember(x,{'A','B','C','D','E'})),answerLetter,'UniformOutput',false); % Assign double values to letters
+
+end
+
+%% formatStudentNumber.m
+% This function calculates all possible student numbers given the scans.
+% I know it looks ugly
+
+function [studentNumber] = formatStudentNumber(studentNumberLogical)
+
+    % Find location of all bubbles and store in cell
+    indNumber = cell(1,7);
+    for i = 1:size(studentNumberLogical,2)
+        indBubble = find(studentNumberLogical(:,i));
+        indNumber{i} = indBubble-1;
+    end
+
+    % Fix any empty vectors
+    emptyVectors = cellfun(@isempty,indNumber);
+    emptyVectors = find(emptyVectors);
+    for i = 1:size(emptyVectors,2)
+        indNumber{emptyVectors(i)} = 0;
+    end
+
+    % Calculate possible combinations so the thing doesnt blow up to 10^7
+    nNumberCombination = size(indNumber{1},2)*size(indNumber{2},2)*size(indNumber{3},2)*size(indNumber{4},2)...
+                                *size(indNumber{5},2)*size(indNumber{6},2)*size(indNumber{7},2);
+
+    if nNumberCombination >= 100
+        % Dont do anything, thing blew up
+        studentNumber = 81*10^7;
+    else
+        % Calculate all combinations
+        [col1, col2, col3, col4, col5, col6, col7] = ndgrid(indNumber{1}, indNumber{2}, indNumber{3}, indNumber{4},...
+                                              indNumber{5}, indNumber{6}, indNumber{7});
+        combination = [col1(:), col2(:), col3(:), col4(:), col5(:), col6(:), col7(:)];
+
+        % Store combinations
+        studentNumber = zeros(1,nNumberCombination);
+        for i = 1:size(combination,1)
+            studentNumber(i) = 81*10^7 + str2double(sprintf('%d',combination(i,:)));
+        end
+    end
+end
+
+%% formatStudentVersion.m
+% This function calculates the first student version. This is only used as
+% a sanity check for student versions
+
+function [studentVersion] = formatStudentVersion(studentVersionLogical)
+
+    % Find location of all bubbles and store in cell
+    indVersion = zeros(1,2);
+    for i = 1:size(indVersion,2)
+        indBubble = find(studentVersionLogical(:,i));
+        if ~isempty(indBubble)
+            indVersion(i) = indBubble(1);
+        else
+        end
+    end
+
+    if indVersion(1) <= 0 || indVersion(1) > 5
+        % This should not be possible but is a failsafe incase something
+        % goes terribly wrong
+        studentVersion = {'NA'};
+    else
+        versionMap = {'A','B','C','D','E'};
+        studentVersion = strcat(versionMap(indVersion(1)),num2str(indVersion(2)));
+    end
+end
+
+%% formatStudentAnswer.m
+% This function calculates the index for student answers given a map of
+% locations
+
+function [studentAnswer] = formatStudentAnswer(studentAnswerLogical)
+    % Find location of all bubbles and store in cell
+    studentAnswer = cell(1,size(studentAnswerLogical,2));
+    for i = 1:size(studentAnswerLogical,1)
+        indBubble = find(studentAnswerLogical(i,:));
+        studentAnswer{i} = indBubble;
+    end
+end
+
+%% validateStudentAnswer
+% This function performs logic regarding student answers. It is located in
+% a different function due to complexity.
+% Version Logic:
+% 1. If there are no single select questions
+%       - If student version is valid, store version
+%       - If student version is invalid, require manual input
+% 2. If network and spatial have the same highest percent
+%       - If student version is not valid, store highest percentage version
+%       - If the student version matches the version with the highest 
+%       percentage, store student version
+%       - If the student version does not match version with highest
+%       percentage, store student version, require manual validation
+% 3. If network and spatial have different highest percent
+%       - If one matches student bubbled version, store version, require manual validation
+%       - If neither matches, store student version, require manual validation
+% Answer Logic:
+% 1. If spatial and network dont agree at all
+%       - If network got shifted up or down by 1, store spatial and
+%       manually validate all
+%       - If neither agree, store spatial and manually validate all
+% 2. If there is no valid test version, require manual verification on all answers
+% 3. If there is a question that only requires 1 answer:
+%       - If network and spatial agree
+%           - On 0 or 1 answer, store answer
+%           - On 2 answers, requires manual validation (some kids are dumb)
+%       - If network has 1 answer
+%           - and spatial has 0, store network 
+%           - and spatial has 2, 
+%               - store network if answer is included in spatial
+%               - require manual validation if neither is correct
+%       - If spatial has 1 answer (network rarely messes up <1/30000)
+%           - require manual validation
+% 3. If a question requires more than 1 answer
+%       - If network and spatial agree, store answer
+%       - If network and spatial disagree, require manual validation
+
+
+function [studentAnswer,studentVersion,boolVerify] = validateStudentAnswer(boolVerify,testVersionList,studentVersion,...
+                                                                           answerPointList,answerLetterList,studentAnswerSpatial,studentAnswerNetwork)
+
+    %% Student Version
+    % Find location of all single answer questions
+    nBubbleAnswerKey = cellfun(@(x)(size(x,2)),answerLetterList);
+    nBubblePoints = cellfun(@(x)(size(x,2)),answerPointList);
+    [nRow, nCol] = find(and(nBubbleAnswerKey == 1,nBubblePoints == 1));
+
+    % Calculate if studentVersion is valid
+    studentVersionList = cell(size(testVersionList));
+    studentVersionList(:) = studentVersion;
+    logicValidVersion = cellfun(@isequal,studentVersionList,testVersionList);
+    indValidVersion = find(logicValidVersion,1);
+
+    % 1. No single answer questions
+    if isempty(nRow)
+        if ~isempty(indValidVersion)
+            % Version is valid
+            boolVerify{2} = false;
+        else
+            % Version is invalid
+            boolVerify{2} = true;
+        end
+    % 2. There are single answer questions
+    else
+        % Calculate percentage for all versions
+        for i = unique(nCol)'
+            indSingleAnswer = nCol==i;
+            singleAnswerRows = nRow(indSingleAnswer);
+    
+            % Compare to answer keys, and calculate scores for each version
+            logicalSpatial = cellfun(@isequal,studentAnswerSpatial(singleAnswerRows),answerLetterList(singleAnswerRows,i)');
+            logicalNetwork = cellfun(@isequal,studentAnswerSpatial(singleAnswerRows),answerLetterList(singleAnswerRows,i)');
+            answerPoint = cell2mat(answerPointList(singleAnswerRows));
+    
+            spatialPercent(i) = sum(answerPoint'.*logicalSpatial);
+            networkPercent(i) = sum(answerPoint'.*logicalNetwork);
+        end
+
+        % Store highest percent version
+        [~, indSpatialVersion] = max(spatialPercent);
+        [~, indNetworkVersion] = max(networkPercent);
+        spatialVersion = testVersionList{indSpatialVersion};
+        networkVersion = testVersionList{indNetworkVersion};
+
+        
+        if indSpatialVersion == indNetworkVersion
+            % If spatial and network version have the same version
+            if isempty(indValidVersion)
+                % If spatial version is invalid
+                studentVersion = networkVersion;
+                indValidVersion = indNetworkVersion;
+                boolVerify{2} = true;
+            elseif indValidVersion == indNetworkVersion
+                % If student version matches
+                boolVerify{2} = false;
+            else
+                % Student version does not match
+                boolVerify{2} = true;
+            end
+        else
+            % Versions dont match, require manual validation
+            boolVerify{2} = true;
+        end
+    end
+
+    %% Student Answer
+    nBubbleSpatial = cellfun(@(x)(size(x,2)),studentAnswerSpatial);
+    nBubbleNetwork = cellfun(@(x)(size(x,2)),studentAnswerNetwork);
+
+    % Find where all the answers are the same
+    logicSameAnswer = cellfun(@isequal,studentAnswerSpatial,studentAnswerNetwork);
+    percentSameAnswer = sum(logicSameAnswer)/size(logicSameAnswer,2);
+
+    % Calculate if network answers shifted up or down by 1
+    logicUpAnswer = cellfun(@isequal,studentAnswerSpatial(2:end,:),studentAnswerNetwork(1:end-1,:));
+    logicDownAnswer = cellfun(@isequal,studentAnswerSpatial(1:end-1,:),studentAnswerNetwork(2:end,:));
+    percentUpAnswer = sum(logicUpAnswer)/size(logicUpAnswer,2);
+    percentDownAnswer = sum(logicDownAnswer)/size(logicDownAnswer,2);
+
+    studentAnswer = cell(1,size(studentAnswerNetwork,2));
+    studentVerify = [];
+    if or(percentUpAnswer >= 0.7, percentDownAnswer >= 0.7)
+        % Network got shifted, require full manual validation
+        studentAnswer = studentAnswerSpatial;
+        boolVerify{3} = 1:size(nBubbleAnswerKey,1);
+    elseif percentSameAnswer <= 0.7
+        % Spatial messed up, require full manual validation
+        studentAnswer = studentAnswerNetwork;
+        boolVerify{3} = 1:size(nBubbleAnswerKey,1);
+    elseif isempty(indValidVersion)
+        % There is no test version to check, require manual validation
+        studentAnswer = studentAnswerNetwork;
+        boolVerify{3} = 1:size(nBubbleAnswerKey,1);
+    else
+        % I could do this with logical vectors but the readability becomes
+        % horrendous and 50 question for loop isnt that long
+
+        % Find all single answers and multi answers
+        indSingleAnswer = find(and(nBubbleAnswerKey(:,indValidVersion) == 1,nBubblePoints == 1));
+        indMultiAnswer = find(~and(nBubbleAnswerKey(:,indValidVersion) == 1,nBubblePoints == 1));
+
+        % Single answer logic
+        for i = indSingleAnswer'
+            if and(logicSameAnswer(i),nBubbleNetwork(i)<2)
+                % If agreeing on one answer, store answer
+                studentAnswer{i} = studentAnswerNetwork{i};
+            elseif and(logicSameAnswer(i),nBubbleNetwork(i)>=2)
+                % If agreeing on multiple answers, someone wrote in pen
+                studentAnswer{i} = studentAnswerNetwork{i};
+                studentVerify(end+1) = i;
+            elseif and(nBubbleNetwork(i)==1,nBubbleSpatial(i)==0)
+                % If network detected something spatial did not
+                studentAnswer{i} = studentAnswerNetwork{i};
+            elseif and(nBubbleNetwork(i)==1,nBubbleSpatial(i)>=2)
+                % If spatial has an extra answer
+                if sum(studentAnswerNetwork{i}==studentAnswerSpatial{i})
+                    % If network answer is included in spatial
+                    studentAnswer{i} = studentAnswerNetwork{i};
+                else
+                    % Require manual validation
+                    studentAnswer{i} = studentAnswerNetwork{i};
+                    studentVerify(end+1) = i;
+                end
+            elseif and(nBubbleSpatial(i)==1,nBubbleNetwork(i)~=1)
+                % If spatial was correct and network was not
+                studentAnswer{i} = studentAnswerSpatial{i};
+                studentVerify(end+1) = i;
+            else
+                studentAnswer{i} = studentAnswerNetwork{i};
+                studentVerify(end+1) = i;
+            end
+        end
+
+        % Multi answer logic
+        for i = indMultiAnswer'
+            if logicSameAnswer(i)
+                % Spatial and Network agree
+                studentAnswer{i} = studentAnswerNetwork{i};
+            else
+                % Dont agree, too hard to automatically decide, manual validation
+                studentAnswer{i} = studentAnswerNetwork{i};
+                studentVerify(end+1) = i;
+            end
+        end
+
+        % Store question numbers that need verification
+        boolVerify{3} = studentVerify;
+    end
+end

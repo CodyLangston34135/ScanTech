@@ -1,0 +1,103 @@
+function [s,blank] = scanArea(pageVal,thresh,bounds,reqPixel,varargin)
+
+    %% Input Parser
+    % Crop page
+    [h w] = size(pageVal);
+    pageVal = pageVal(bounds(1,1):bounds(1,2),bounds(2,1):bounds(2,2));
+
+    % Check for inputs
+    pOrient = inputParser();
+
+    strelDiam = [];
+    reqArea = 0;
+    reqCentroid = [];
+    reqSize = [];
+    maxHeight = h;
+    blank = zeros(h,w);
+
+    addOptional(pOrient,'noiseReduction', strelDiam);
+    addOptional(pOrient,'requiredArea', reqArea);
+    addOptional(pOrient,'requiredCentroid', reqCentroid);
+    addOptional(pOrient,'requiredSize', reqSize);
+    addOptional(pOrient,'maxHeight', maxHeight);
+    addOptional(pOrient,'addBlank', blank);
+
+    parse(pOrient, varargin{:});
+    
+    strelDiam      = pOrient.Results.noiseReduction;
+    reqArea        = pOrient.Results.requiredArea;
+    reqCentroid    = pOrient.Results.requiredCentroid;
+    reqSize        = pOrient.Results.requiredSize;
+    maxHeight      = pOrient.Results.maxHeight;
+    blank          = pOrient.Results.addBlank;
+
+    %% Create Binary Map
+    % HSV threshold
+    pageLog = pageVal<=thresh;
+    pageLog = bwareaopen(pageLog,reqPixel);
+    pageLog = imfill(pageLog,"holes");
+    if size(strelDiam,1)~=0
+        pageLog = imclose(pageLog,strel('disk',strelDiam));
+    end
+
+    %% Scan Image for Blobs
+    [pageLabel, points] = bwlabel(pageLog);
+    s = regionprops(pageLabel, pageVal, 'Centroid', 'Area', 'BoundingBox','MeanIntensity');
+    indStore = 1:points;
+    
+    %% Check which Blobs Meet Criteria
+    % Centroid criteria
+    if size(reqCentroid,1)~=0
+        reqCentroid = reqCentroid - [bounds(2,1), bounds(2,1)];
+        for i = 1:size(s,1)
+            blobCent(i,:) = s(i).Centroid;
+        end
+        [indCent] = find(and(blobCent(:,1)>=reqCentroid(1),blobCent(:,1)<=reqCentroid(2)));
+        s = s(indCent);
+        indStore = indStore(indCent);
+    end
+
+    % Size criteria
+    if size(reqSize,1)~=0
+        for i = 1:size(s,1)
+            blobDim(i,:) = [s(i).BoundingBox(3) s(i).BoundingBox(4)];
+        end
+        [indSize] = find(and(blobDim(:,1)>=reqSize(1),blobDim(:,2)>=reqSize(2)));
+        s = s(indSize);
+        indStore = indStore(indSize);
+    end
+
+    if size(s,1)==0
+    else
+        % Area criteria
+        if reqArea~=0
+            blobDim = [0 0];
+            for i = 1:size(s,1)
+                blobArea(i,1) = s(i).Area;
+                blobDim(i,:) = [s(i).BoundingBox(3) s(i).BoundingBox(4)];
+            end
+            areaRatio = blobArea./(blobDim(:,1).*blobDim(:,2));
+            [indArea] = find(areaRatio>=reqArea);
+            s = s(indArea);
+            indStore = indStore(indArea);
+        end
+    
+        % Height criteria
+        if maxHeight~=0
+            blobDim = [0 0];
+            for i = 1:size(s,1)
+                blobDim(i,:) = [s(i).BoundingBox(3) s(i).BoundingBox(4)];
+            end
+            [indHeight] = find(blobDim(:,2)<=maxHeight);
+            s = s(indHeight);
+            indStore = indStore(indHeight);
+        end
+    
+        %% Add Resulting Blobs to Binary Map
+        for i = 1:length(indStore)
+            blankAdd = pageLabel==indStore(i);
+            blank(bounds(1,1):bounds(1,2),bounds(2,1):bounds(2,2)) = blank(bounds(1,1):bounds(1,2),bounds(2,1):bounds(2,2))+blankAdd;
+        end
+    end
+
+end
