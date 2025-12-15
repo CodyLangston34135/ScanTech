@@ -1,6 +1,6 @@
 Matlab app that reads student number, test version, and test answers bubbled in "Multiple Choice Answer Sheet.pdf"
 
-This app uses 2 a CNN and image processing based scanning method in parallel to increase the redundancy of reading answers. The workflow is the following.
+This app uses a CNN and image processing based scanning method in parallel to increase the redundancy of reading answers. The workflow is the following.
 
 1. Run the file "ScanTechApp.mlapp". Make sure the Matlab path is the folder containing the file or add the ImageProcessing folder to the path.
 2. Click "New Session" to create a new folder for that test or "Load Session" to select an existing folder.
